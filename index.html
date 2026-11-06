@@ -1,0 +1,32 @@
+<!doctype html><html lang="fil"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Submit ng Gawa</title><link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script><script src="config.js"></script></head>
+<body><main class="narrow"><p class="mute" id="kind"></p><h1 id="title">Sandali lang…</h1><div id="app"></div>
+<div class="card" id="form" hidden>
+<label>Buong pangalan (Apelyido, Pangalan)<input id="nm" autocomplete="name"></label>
+<label>Section<input id="sec"></label>
+<label>Litrato ng papel (pwede ang maraming page, hanggang 10)<input id="fs" type="file" accept="image/*" multiple></label>
+<p class="mute" id="info"></p><button class="p" id="go">Isumite</button></div></main>
+<script>
+const db=supabase.createClient(CFG.url,CFG.key),$=i=>document.getElementById(i),code=new URLSearchParams(location.search).get('c')||'';
+const show=m=>{$('form').hidden=true;$('app').innerHTML='<p class="msg">'+m+'</p>'};
+let dev=''; try{dev=localStorage.dev||(localStorage.dev=crypto.randomUUID())}catch(e){}
+(async()=>{const{data}=await db.rpc('get_activity',{c:code});
+ if(!data)return show('Hindi valid ang link na ito.');
+ $('title').textContent=data.title;$('kind').textContent=data.kind;
+ if(data.state=='scheduled')return show('Hindi pa bukas ang submission.');
+ if(!data.open)return show('Sarado na ang submission. Hindi na tumatanggap ng upload.');
+ $('form').hidden=false})();
+$('fs').onchange=e=>{$('info').textContent=e.target.files.length+' litrato ang napili'};
+const squeeze=f=>new Promise((ok,no)=>{const i=new Image();i.onload=()=>{const s=Math.min(1,1600/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*s;c.height=i.height*s;c.getContext('2d').drawImage(i,0,0,c.width,c.height);c.toBlob(ok,'image/jpeg',.7)};i.onerror=no;i.src=URL.createObjectURL(f)});
+$('go').onclick=async()=>{const fs=[...$('fs').files],nm=$('nm').value.trim();
+ if(!nm||!$('sec').value.trim())return alert('Ilagay ang pangalan at section.');
+ if(!fs.length||fs.length>10)return alert('Pumili ng 1 hanggang 10 litrato.');
+ $('go').disabled=true;const paths=[];
+ try{for(let k=0;k<fs.length;k++){$('info').textContent=`Ina-upload ang litrato ${k+1} ng ${fs.length}…`;
+  const p=`${code}/${crypto.randomUUID()}.jpg`,{error}=await db.storage.from('uploads').upload(p,await squeeze(fs[k]),{contentType:'image/jpeg'});
+  if(error)throw error;paths.push(p)}
+ const{error}=await db.rpc('submit',{c:code,nm,sec:$('sec').value.trim(),dev,f:paths});if(error)throw error;
+ show('Naisumite na ang gawa mo, '+nm+'. Pwede mo nang isara ang page na ito.')}
+ catch(e){$('go').disabled=false;$('info').textContent='';alert(/CLOSED|row-level|policy/i.test(e.message||'')?'Sarado na ang submission.':'May error sa pag-upload. Subukan ulit.')}};
+</script></body></html>

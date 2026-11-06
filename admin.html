@@ -1,0 +1,69 @@
+<!doctype html><html lang="fil"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin</title><link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script><script src="config.js"></script></head>
+<body><main>
+<div id="login" class="card" hidden><h1>Admin login</h1><input id="em" type="email" placeholder="Email"><input id="pw" type="password" placeholder="Password"><button class="p" id="li">Mag-login</button></div>
+<div id="main" hidden>
+<div class="row"><h1 style="flex:1">Mga activity</h1><button id="lo">Mag-logout</button></div>
+<div class="card"><h2>Bagong activity</h2><div class="row"><input id="t" placeholder="Title (hal. Seatwork 3)" style="flex:2">
+<select id="k" style="flex:1"><option>Seatwork</option><option>Quiz</option><option>Exam</option><option>Iba pa</option></select><input id="s" placeholder="Section/Subject" style="flex:1"></div>
+<label>Deadline<input id="dl" type="datetime-local"></label>
+<div class="row"><button data-h="1">+1 oras</button><button data-h="3">+3 oras</button><button id="eod">Hanggang 11 PM ngayon</button><button class="p" id="mk">Gumawa ng link</button></div></div>
+<div class="card" id="qr" hidden><b id="qt"></b><p><a id="ql" target="_blank"></a></p><div id="qc"></div><button id="cp">Kopyahin ang link</button></div>
+<div class="card wrap"><table><thead><tr><th>Title</th><th>Uri</th><th>Deadline</th><th>Status</th><th></th></tr></thead><tbody id="al"></tbody></table></div>
+<div class="card" id="sp" hidden><h2 id="sh"></h2><div class="row"><input id="f" placeholder="Hanapin (pangalan, section, IP)" style="flex:1">
+<button class="p" id="zs">I-download ang napili (ZIP)</button><button id="za">I-download lahat (ZIP)</button></div><p class="mute" id="zm"></p>
+<div class="wrap"><table><thead><tr><th><input type="checkbox" id="ck" style="width:auto;margin:0"></th><th>Litrato</th><th class="s" data-k="student_name">Pangalan</th><th class="s" data-k="section">Section</th><th>Files</th><th class="s" data-k="created_at">Oras</th><th class="s" data-k="ip">IP</th><th class="s" data-k="device">Device</th></tr></thead><tbody id="sb"></tbody></table></div>
+<p class="mute">Naka-highlight (dilaw) ang mga may parehong IP o device pero magkaibang pangalan. Hindi ito ganap na patunay: pareho ang IP ng mga nasa iisang WiFi.</p></div></div></main>
+<script>
+const db=supabase.createClient(CFG.url,CFG.key),$=i=>document.getElementById(i),B=db.storage.from('uploads');
+let acts=[],subs=[],cur=null,sel=new Set(),sk='created_at',sd=-1,thumbs={};
+const loc=d=>new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,16),fmt=d=>new Date(d).toLocaleString('en-PH',{timeZone:'Asia/Manila'});
+const st=a=>a.closed||new Date(a.deadline_at)<new Date()?'Closed':new Date(a.start_at)>new Date()?'Scheduled':'Active';
+const url=a=>new URL('index.html?c='+a.code,location.href).href;
+async function init(){const{data:{session}}=await db.auth.getSession();$('login').hidden=!!session;$('main').hidden=!session;if(session)load()}
+$('li').onclick=async()=>{const{error}=await db.auth.signInWithPassword({email:$('em').value,password:$('pw').value});error?alert('Mali ang email o password.'):init()};
+$('lo').onclick=async()=>{await db.auth.signOut();init()};
+document.querySelectorAll('[data-h]').forEach(b=>b.onclick=()=>$('dl').value=loc(new Date(Date.now()+b.dataset.h*36e5)));
+$('eod').onclick=()=>{const d=new Date();d.setHours(23,0,0,0);$('dl').value=loc(d)};
+$('mk').onclick=async()=>{if(!$('t').value.trim()||!$('dl').value)return alert('Ilagay ang title at deadline.');
+ const code=Array.from(crypto.getRandomValues(new Uint8Array(8)),b=>'abcdefghjkmnpqrstuvwxyz23456789'[b%31]).join('');
+ const{data,error}=await db.from('activities').insert({code,title:$('t').value.trim(),kind:$('k').value,section:$('s').value.trim(),deadline_at:new Date($('dl').value).toISOString()}).select().single();
+ if(error)return alert(error.message);$('t').value='';await load();showQR(data)};
+function showQR(a){$('qr').hidden=false;$('qt').textContent=a.title;$('ql').textContent=$('ql').href=url(a);$('qc').innerHTML='';new QRCode($('qc'),{text:url(a),width:200,height:200});$('qr').scrollIntoView()}
+$('cp').onclick=()=>navigator.clipboard.writeText($('ql').href).then(()=>alert('Nakopya na.'));
+async function load(){const{data}=await db.from('activities').select('*').order('created_at',{ascending:false});acts=data||[];
+ $('al').innerHTML=acts.length?'':'<tr><td colspan=5 class="mute">Wala pang activity. Gumawa ng una sa itaas.</td></tr>';
+ acts.forEach(a=>{const r=document.createElement('tr');r.innerHTML=`<td>${esc(a.title)}<br><span class="mute">${esc(a.section||'')}</span></td><td>${a.kind}</td><td>${fmt(a.deadline_at)}</td><td><span class="tag">${st(a)}</span></td><td class="row"></td>`;
+  const c=r.lastChild,add=(t,f,cl)=>{const b=document.createElement('button');b.textContent=t;if(cl)b.className=cl;b.onclick=f;c.append(b)};
+  add('Submissions',()=>open(a));add('Link/QR',()=>showQR(a));add('Extend',()=>ext(a));if(st(a)=='Active')add('Close now',()=>upd(a,{closed:true}));add('Delete',()=>del(a),'d');$('al').append(r)})}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const upd=async(a,p)=>{const{error}=await db.from('activities').update(p).eq('id',a.id);error?alert(error.message):load()};
+function ext(a){const m=+prompt('Ilang minuto ang idadagdag? (hal. 10, 30, 60)','10');if(!m)return;
+ upd(a,{closed:false,deadline_at:new Date(Math.max(Date.now(),new Date(a.deadline_at))+m*6e4).toISOString()})}
+async function del(a){if(!confirm(`I-delete ang "${a.title}" at LAHAT ng litrato nito? Hindi na ito maibabalik.`))return;
+ const{data}=await db.from('submissions').select('files').eq('activity_id',a.id);const f=(data||[]).flatMap(x=>x.files);
+ if(f.length){const{error}=await B.remove(f);if(error)return alert(error.message)}
+ await db.from('activities').delete().eq('id',a.id);if(cur&&cur.id==a.id){cur=null;$('sp').hidden=true}load()}
+async function open(a){cur=a;sel.clear();$('sp').hidden=false;$('sh').textContent='Submissions: '+a.title;
+ const{data}=await db.from('submissions').select('*').eq('activity_id',a.id);subs=data||[];thumbs={};
+ const ps=subs.map(s=>s.files[0]);if(ps.length){const{data:u}=await B.createSignedUrls(ps,3600);(u||[]).forEach(x=>thumbs[x.path]=x.signedUrl)}
+ draw();$('sp').scrollIntoView()}
+const rows=()=>{const q=$('f').value.toLowerCase();return subs.filter(s=>[s.student_name,s.section,s.ip].join(' ').toLowerCase().includes(q)).sort((x,y)=>((x[sk]||'')>(y[sk]||'')?1:-1)*sd)};
+function draw(){const by=(k)=>{const m={};subs.forEach(s=>{if(s[k])(m[s[k]]=m[s[k]]||new Set()).add(s.student_name.toLowerCase())});return m},ip=by('ip'),dv=by('device');
+ $('sb').innerHTML=rows().length?'':'<tr><td colspan=8 class="mute">Wala pang submission.</td></tr>';
+ rows().forEach(s=>{const w=(ip[s.ip]?.size>1)||(dv[s.device]?.size>1),r=document.createElement('tr');if(w)r.className='warn';
+  r.innerHTML=`<td><input type="checkbox" style="width:auto;margin:0" ${sel.has(s.id)?'checked':''}></td><td>${thumbs[s.files[0]]?`<a href="${thumbs[s.files[0]]}" target="_blank"><img class="th" src="${thumbs[s.files[0]]}"></a>`:''}</td><td>${esc(s.student_name)}</td><td>${esc(s.section||'')}</td><td>${s.files.length}</td><td>${fmt(s.created_at)}</td><td>${esc(s.ip||'')}</td><td>${esc((s.device||'').slice(0,8))}</td>`;
+  r.querySelector('input').onchange=e=>e.target.checked?sel.add(s.id):sel.delete(s.id);$('sb').append(r)})}
+$('f').oninput=draw;$('ck').onchange=e=>{rows().forEach(s=>e.target.checked?sel.add(s.id):sel.delete(s.id));draw()};
+document.querySelectorAll('th.s').forEach(h=>h.onclick=()=>{sd=sk==h.dataset.k?-sd:1;sk=h.dataset.k;draw()});
+async function zip(list){if(!list.length)return alert('Walang mapipili.');const z=new JSZip(),used=new Set();let n=0,tot=list.reduce((a,s)=>a+s.files.length,0);
+ for(const s of list)for(let i=0;i<s.files.length;i++){$('zm').textContent=`Kinukuha ang ${++n} ng ${tot}…`;
+  const{data,error}=await B.download(s.files[i]);if(error)continue;let nm=s.student_name.replace(/[^\w\-]+/g,'_')+'_'+(s.section||'').replace(/[^\w\-]+/g,'_');
+  let f=`${nm}_p${i+1}.jpg`;if(used.has(f))f=`${nm}_${s.id.slice(0,4)}_p${i+1}.jpg`;used.add(f);z.file(f,data)}
+ const b=await z.generateAsync({type:'blob'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=cur.title.replace(/[^\w\-]+/g,'_')+'.zip';a.click();$('zm').textContent='Tapos na ang download.'}
+$('za').onclick=()=>zip(rows());$('zs').onclick=()=>zip(subs.filter(s=>sel.has(s.id)));
+init();
+</script></body></html>
