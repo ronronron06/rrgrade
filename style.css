@@ -13,3 +13,4 @@ button.p{background:var(--ac);color:#fff;border-color:var(--ac)}button.d{color:#
 table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left}
 th.s{cursor:pointer}tr.warn{background:var(--warn)}.wrap{overflow-x:auto}img.th{height:44px;border-radius:4px}
 .tag{padding:2px 8px;border-radius:99px;border:1px solid var(--line);font-size:.8rem}
+
